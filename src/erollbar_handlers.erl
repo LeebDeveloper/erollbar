@@ -59,13 +59,13 @@ crash_report({error_report, _, {_, crash_report, [Report, _]}}) ->
     case proplists:get_value(error_info, Report, []) of
         [] ->
             pass;
-        {_Error, {ExceptionExit, Frames}, _} ->
+        {_Error, {ExceptionExit, Frames}, _} when is_list(Frames) ->
             TraceMessage = erollbar_message:trace(ExceptionExit),
             ParsedFrames = create_frames(Frames),
             TraceMessage1 = erollbar_message:frames(ParsedFrames, TraceMessage),
             TraceMessage2 = erollbar_message:level(error, TraceMessage1),
             {ok, TraceMessage2};
-        {_Error, ExceptionExit, Frames} ->
+        {_Error, ExceptionExit, Frames} when is_list(Frames) ->
             TraceMessage = erollbar_message:trace(ExceptionExit),
             ParsedFrames = create_frames(Frames),
             TraceMessage1 = erollbar_message:frames(ParsedFrames, TraceMessage),
