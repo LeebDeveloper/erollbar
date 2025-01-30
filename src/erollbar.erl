@@ -6,6 +6,7 @@
                {platform, binary()}|
                {batch_max, pos_integer()}|
                {time_max, ms()}|
+               {rpm_max, non_neg_integer()}|
                {endpoint, binary()}|
                {host, binary()}|
                {root, binary()}|
@@ -33,6 +34,7 @@ start(AccessToken, Opts) ->
     Opts1 = set_defaults([{environment, <<"default">>}
                          ,{platform, <<"beam">>}
                          ,{batch_max, config(batch_max)}
+                         ,{rpm_max, 0}
                          ,{endpoint, config(endpoint)}
                          ,{host, hostname()}
                          ,{report_handlers, erollbar_handlers:default_handlers()}
@@ -59,7 +61,7 @@ set_defaults([{Key, _}=Pair|Rest], Opts) ->
 validate_opts([], Retval) ->
     Retval;
 validate_opts([{Key, _}=Pair|Rest], Retval) ->
-    case lists:member(Key, [environment, batch_max, host, endpoint, root, branch,
+    case lists:member(Key, [environment, batch_max, rpm_max, host, endpoint, root, branch,
                             platform, time_max, http_timeout, report_handlers]) of
         true ->
             validate_opts(Rest, [Pair | Retval]);

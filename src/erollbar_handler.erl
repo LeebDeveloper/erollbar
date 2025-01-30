@@ -5,6 +5,8 @@
                 report_handlers :: [erollbar_handlers:handler()],
                 items = [] :: [term()]|[],
                 requests = [] :: [{reference(), non_neg_integer()}],
+                requests_times = queue:new() :: queue:queue(),
+                rpm_max :: non_neg_integer(),
                 batch_max :: pos_integer()|undefined,
                 time_max :: erollbar:ms()|undefined,
                 time_ref :: reference()|undefined,
@@ -14,6 +16,7 @@
                }).
 
 -define(MAX_CONN, 10).
+-define(ONE_MINUTE, 60).
 
 -export([init/1
         ,handle_event/2
@@ -31,6 +34,7 @@ init([AccessToken, Opts]) ->
     ok = hackney_pool:start_pool(erollbar, [{max_connections, ?MAX_CONN}]),
     {ok, #state{access_token=AccessToken,
                 batch_max=proplists:get_value(batch_max, Opts),
+                rpm_max=proplists:get_value(rpm_max, Opts),
                 time_max=TimeMax,
                 time_ref=TimeRef,
                 endpoint=proplists:get_value(endpoint, Opts),
@@ -126,19 +130,34 @@ send_items(#state{requests=Requests, items=Items}=State) when length(Requests) >
     State#state{items = []};
 send_items(#state{items=Items, requests=Requests, endpoint=Endpoint,
                   access_token=AccessToken, details=Details,
+                  requests_times=RequestsTimes0, rpm_max=RPMMax,
                   http_timeout=HttpTimeout}=State) ->
-    Message = erollbar_encoder:encode(Items, AccessToken, Details),
-    MessageJson = jsx:encode(Message),
-    case request(Endpoint, MessageJson, HttpTimeout) of
-        {ok, RequestRef} ->
-            State#state{items = [], requests = [{RequestRef, length(Items)} | Requests]};
-        {error, Reason} ->
-            % Unknown error occured. Drop data and log
-            info([{mod, erollbar_handler},
-                  {at, send_items},
-                  {dropped, length(Items)},
-                  {reason, Reason}]),
-            State#state{items = []}
+    ReqTime = erlang:monotonic_time(second),
+    RequestsTimes = clear_old_requests(RequestsTimes0, ReqTime - ?ONE_MINUTE),
+    RPM = queue:len(RequestsTimes),
+    State1 = if
+        RPMMax > 0 andalso RPM < RPMMax ->
+            Message = erollbar_encoder:encode(Items, AccessToken, Details),
+            MessageJson = jsx:encode(Message),
+            case request(Endpoint, MessageJson, HttpTimeout) of
+                {ok, RequestRef} ->
+                    State#state{items = [], requests = [{RequestRef, length(Items)} | Requests]};
+                {error, Reason} ->
+                    % Unknown error occured. Drop data and log
+                    info([{mod, erollbar_handler},
+                          {at, send_items},
+                          {dropped, length(Items)},
+                          {reason, Reason}]),
+                    State#state{items = []}
+            end;
+        true -> State
+    end,
+    State1#state{requests_times=queue:in(ReqTime, RequestsTimes)}.
+
+clear_old_requests(Queue, Threshold) ->
+    case queue:out(Queue) of
+        {{value, T}, Queue1} when T < Threshold -> clear_old_requests(Queue1, Threshold);
+        _ -> Queue
     end.
 
 info(Details) ->
