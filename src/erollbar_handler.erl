@@ -44,7 +44,6 @@ init([AccessToken, Opts]) ->
                }}.
 
 handle_event({_, _, {_, _, _}} = Report, #state{report_handlers=Handlers}=State) ->
-    info([{mod, erollbar_handler}, {at, handle_event}, {body, Report}]),
     State1 = case handle_message(Report, Handlers) of
                  {ok, Item} ->
                      State2 = maybe_send_batch(Item, State),
